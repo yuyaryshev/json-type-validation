@@ -1,5 +1,6 @@
 import * as Result from './result';
-import {isEqual} from "./isEqual"
+import {isEqual} from './isEqual';
+import {Err, prependAtIfError} from './result';
 
 /**
  * Information describing how json data failed to match a decoder.
@@ -9,8 +10,10 @@ import {isEqual} from "./isEqual"
 export interface DecoderError {
   kind: 'DecoderError';
   input: unknown;
-  at: string;
+  at: (string | number)[];
   message: string;
+  expectation: string;
+  invalidValue: any;
 }
 
 /**
@@ -18,14 +21,14 @@ export interface DecoderError {
  * with the decoded value of type `A`, on failure returns `Err` containing a
  * `DecoderError`.
  */
-type RunResult<A> = Result.Result<A, DecoderError>;
+type RunResult<A> = Result.Result<A>;
 
 /**
  * Alias for the result of the internal `Decoder.decode` method. Since `decode`
  * is a private function it returns a partial decoder error on failure, which
  * will be completed and polished when handed off to the `run` method.
  */
-type DecodeResult<A> = Result.Result<A, Partial<DecoderError>>;
+type DecodeResult<A> = Result.Result<A>;
 
 /**
  * Defines a mapped type over an interface `A`. `DecoderObject<A>` is an
@@ -91,11 +94,11 @@ const typeString = (json: unknown): string => {
 const expectedGot = (expected: string, got: unknown) =>
   `expected ${expected}, got ${typeString(got)}`;
 
-const printPath = (paths: (string | number)[]): string =>
-  paths.map(path => (typeof path === 'string' ? `.${path}` : `[${path}]`)).join('');
-
-const prependAt = (newAt: string, {at, ...rest}: Partial<DecoderError>): Partial<DecoderError> => ({
-  at: newAt + (at || ''),
+const prependAt = (
+  newAt: string | number,
+  {at, ...rest}: Partial<DecoderError>
+): Partial<DecoderError> => ({
+  at: [newAt, ...(at || [])],
   ...rest
 });
 
@@ -141,11 +144,15 @@ export class Decoder<A> {
    * Decoder primitive that validates strings, and fails on all other input.
    */
   static string(): Decoder<string> {
-    return new Decoder<string>(
-      (json: unknown) =>
-        typeof json === 'string'
-          ? Result.ok(json)
-          : Result.err({message: expectedGot('a string', json)})
+    return new Decoder<string>((json: unknown) =>
+      typeof json === 'string'
+        ? Result.ok(json)
+        : Result.err({
+            at: [],
+            message: 'type mismatch',
+            expectation: 'a string',
+            invalidValue: json
+          })
     );
   }
 
@@ -153,11 +160,15 @@ export class Decoder<A> {
    * Decoder primitive that validates numbers, and fails on all other input.
    */
   static number(): Decoder<number> {
-    return new Decoder<number>(
-      (json: unknown) =>
-        typeof json === 'number'
-          ? Result.ok(json)
-          : Result.err({message: expectedGot('a number', json)})
+    return new Decoder<number>((json: unknown) =>
+      typeof json === 'number'
+        ? Result.ok(json)
+        : Result.err({
+            at: [],
+            message: 'type mismatch',
+            expectation: 'a number',
+            invalidValue: json
+          })
     );
   }
 
@@ -165,11 +176,15 @@ export class Decoder<A> {
    * Decoder primitive that validates booleans, and fails on all other input.
    */
   static boolean(): Decoder<boolean> {
-    return new Decoder<boolean>(
-      (json: unknown) =>
-        typeof json === 'boolean'
-          ? Result.ok(json)
-          : Result.err({message: expectedGot('a boolean', json)})
+    return new Decoder<boolean>((json: unknown) =>
+      typeof json === 'boolean'
+        ? Result.ok(json)
+        : Result.err({
+            at: [],
+            message: 'type mismatch',
+            expectation: 'a boolean',
+            invalidValue: json
+          })
     );
   }
 
@@ -231,14 +246,15 @@ export class Decoder<A> {
    */
   static constant<T extends string | number | boolean | []>(value: T): Decoder<T>;
   static constant<T extends string | number | boolean, U extends [T, ...T[]]>(value: U): Decoder<U>;
-  static constant<T extends string | number | boolean, U extends Record<string, T>>(value: U): Decoder<U>;
+  static constant<T extends string | number | boolean, U extends Record<string, T>>(
+    value: U
+  ): Decoder<U>;
   static constant<T>(value: T): Decoder<T>;
   static constant(value: any) {
-    return new Decoder(
-      (json: unknown) =>
-        isEqual(json, value)
-          ? Result.ok(value)
-          : Result.err({message: `expected ${JSON.stringify(value)}, got ${JSON.stringify(json)}`})
+    return new Decoder((json: unknown) =>
+      isEqual(json, value)
+        ? Result.ok(value)
+        : Result.err({at: [], message: 'type mismatch', expectation: value, invalidValue: json})
     );
   }
 
@@ -278,9 +294,14 @@ export class Decoder<A> {
                 obj[key] = r.result;
               }
             } else if (json[key] === undefined) {
-              return Result.err({message: `the key '${key}' is required but was not present`});
+              return Result.err({
+                at: [],
+                message: `the key '${key}' is required but was not present`,
+                expectation: `field '${key}'`,
+                invalidValue: undefined
+              });
             } else {
-              return Result.err(prependAt(`.${key}`, r.error));
+              return prependAtIfError(r, key);
             }
           }
         }
@@ -288,7 +309,12 @@ export class Decoder<A> {
       } else if (isJsonObject(json)) {
         return Result.ok(json);
       } else {
-        return Result.err({message: expectedGot('an object', json)});
+        return Result.err({
+          at: [],
+          message: expectedGot('an object', json),
+          expectation: 'an object',
+          invalidValue: json
+        });
       }
     });
   }
@@ -330,7 +356,7 @@ export class Decoder<A> {
     return new Decoder(json => {
       if (isJsonArray(json) && decoder) {
         const decodeValue = (v: unknown, i: number): DecodeResult<A> =>
-          Result.mapError(err => prependAt(`[${i}]`, err), decoder.decode(v));
+          prependAtIfError(decoder.decode(v), i);
 
         return json.reduce(
           (acc: DecodeResult<A[]>, v: unknown, i: number) =>
@@ -340,7 +366,12 @@ export class Decoder<A> {
       } else if (isJsonArray(json)) {
         return Result.ok(json);
       } else {
-        return Result.err({message: expectedGot('an array', json)});
+        return Result.err({
+          at: [],
+          message: expectedGot('an array', json),
+          expectation: 'an array',
+          invalidValue: json
+        });
       }
     });
   }
@@ -369,9 +400,10 @@ export class Decoder<A> {
       if (isJsonArray(json)) {
         if (json.length !== decoders.length) {
           return Result.err({
-            message: `expected a tuple of length ${decoders.length}, got one of length ${
-              json.length
-            }`
+            at: [],
+            message: `expected a tuple of length ${decoders.length}, got one of length ${json.length}`,
+            expectation: `tuple of length ${decoders.length}`,
+            invalidValue: `got one of length ${json.length}`
           });
         }
         const result = [];
@@ -380,12 +412,17 @@ export class Decoder<A> {
           if (nth.ok) {
             result[i] = nth.result;
           } else {
-            return Result.err(prependAt(`[${i}]`, nth.error));
+            return prependAtIfError(nth, i);
           }
         }
         return Result.ok(result);
       } else {
-        return Result.err({message: expectedGot(`a tuple of length ${decoders.length}`, json)});
+        return Result.err({
+          at: [],
+          message: expectedGot(`a tuple of length ${decoders.length}`, json),
+          expectation: `a tuple of length ${decoders.length}`,
+          invalidValue: json
+        });
       }
     });
   }
@@ -410,13 +447,18 @@ export class Decoder<A> {
             if (r.ok === true) {
               obj[key] = r.result;
             } else {
-              return Result.err(prependAt(`.${key}`, r.error));
+              return prependAtIfError(r, key);
             }
           }
         }
         return Result.ok(obj);
       } else {
-        return Result.err({message: expectedGot('an object', json)});
+        return Result.err({
+          at: [],
+          message: expectedGot('an object', json),
+          expectation: `an object`,
+          invalidValue: json
+        });
       }
     });
 
@@ -438,8 +480,8 @@ export class Decoder<A> {
    * ```
    */
   static optional = <A>(decoder: Decoder<A>): Decoder<undefined | A> =>
-    new Decoder<undefined | A>(
-      (json: unknown) => (json === undefined ? Result.ok(undefined) : decoder.decode(json))
+    new Decoder<undefined | A>((json: unknown) =>
+      json === undefined ? Result.ok(undefined) : decoder.decode(json)
     );
 
   /**
@@ -471,7 +513,10 @@ export class Decoder<A> {
         .map(error => `at error${error.at || ''}: ${error.message}`)
         .join('", "');
       return Result.err({
-        message: `expected a value matching one of the decoders, got the errors ["${errorsList}"]`
+        at: [],
+        message: `expected a value matching one of the decoders, got the errors ["${errorsList}"]`,
+        expectation: 'ONEOF_TBD',
+        invalidValue: undefined
       });
     });
 
@@ -491,13 +536,13 @@ export class Decoder<A> {
    * const oneOfDecoder: Decoder<C> = oneOf(object<C>({a: string()}), object<C>({b: number()}));
    * ```
    */
-  static union <A, B>(ad: Decoder<A>, bd: Decoder<B>): Decoder<A | B>; // prettier-ignore
-  static union <A, B, C>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>): Decoder<A | B | C>; // prettier-ignore
-  static union <A, B, C, D>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>): Decoder<A | B | C | D>; // prettier-ignore
-  static union <A, B, C, D, E>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>): Decoder<A | B | C | D | E>; // prettier-ignore
-  static union <A, B, C, D, E, F>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>): Decoder<A | B | C | D | E | F>; // prettier-ignore
-  static union <A, B, C, D, E, F, G>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>, gd: Decoder<G>): Decoder<A | B | C | D | E | F | G>; // prettier-ignore
-  static union <A, B, C, D, E, F, G, H>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>, gd: Decoder<G>, hd: Decoder<H>): Decoder<A | B | C | D | E | F | G | H>; // prettier-ignore
+  static union<A, B>(ad: Decoder<A>, bd: Decoder<B>): Decoder<A | B>; // prettier-ignore
+  static union<A, B, C>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>): Decoder<A | B | C>; // prettier-ignore
+  static union<A, B, C, D>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>): Decoder<A | B | C | D>; // prettier-ignore
+  static union<A, B, C, D, E>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>): Decoder<A | B | C | D | E>; // prettier-ignore
+  static union<A, B, C, D, E, F>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>): Decoder<A | B | C | D | E | F>; // prettier-ignore
+  static union<A, B, C, D, E, F, G>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>, gd: Decoder<G>): Decoder<A | B | C | D | E | F | G>; // prettier-ignore
+  static union<A, B, C, D, E, F, G, H>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>, gd: Decoder<G>, hd: Decoder<H>): Decoder<A | B | C | D | E | F | G | H>; // prettier-ignore
   static union(ad: Decoder<any>, bd: Decoder<any>, ...decoders: Decoder<any>[]): Decoder<any> {
     return Decoder.oneOf(ad, bd, ...decoders);
   }
@@ -520,13 +565,13 @@ export class Decoder<A> {
    * const catDecoder: Decoder<Cat> = intersection(petDecoder, object({evil: boolean()}));
    * ```
    */
-  static intersection <A, B>(ad: Decoder<A>, bd: Decoder<B>): Decoder<A & B>; // prettier-ignore
-  static intersection <A, B, C>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>): Decoder<A & B & C>; // prettier-ignore
-  static intersection <A, B, C, D>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>): Decoder<A & B & C & D>; // prettier-ignore
-  static intersection <A, B, C, D, E>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>): Decoder<A & B & C & D & E>; // prettier-ignore
-  static intersection <A, B, C, D, E, F>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>): Decoder<A & B & C & D & E & F>; // prettier-ignore
-  static intersection <A, B, C, D, E, F, G>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>, gd: Decoder<G>): Decoder<A & B & C & D & E & F & G>; // prettier-ignore
-  static intersection <A, B, C, D, E, F, G, H>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>, gd: Decoder<G>, hd: Decoder<H>): Decoder<A & B & C & D & E & F & G & H>; // prettier-ignore
+  static intersection<A, B>(ad: Decoder<A>, bd: Decoder<B>): Decoder<A & B>; // prettier-ignore
+  static intersection<A, B, C>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>): Decoder<A & B & C>; // prettier-ignore
+  static intersection<A, B, C, D>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>): Decoder<A & B & C & D>; // prettier-ignore
+  static intersection<A, B, C, D, E>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>): Decoder<A & B & C & D & E>; // prettier-ignore
+  static intersection<A, B, C, D, E, F>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>): Decoder<A & B & C & D & E & F>; // prettier-ignore
+  static intersection<A, B, C, D, E, F, G>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>, gd: Decoder<G>): Decoder<A & B & C & D & E & F & G>; // prettier-ignore
+  static intersection<A, B, C, D, E, F, G, H>(ad: Decoder<A>, bd: Decoder<B>, cd: Decoder<C>, dd: Decoder<D>, ed: Decoder<E>, fd: Decoder<F>, gd: Decoder<G>, hd: Decoder<H>): Decoder<A & B & C & D & E & F & G & H>; // prettier-ignore
   static intersection(ad: Decoder<any>, bd: Decoder<any>, ...ds: Decoder<any>[]): Decoder<any> {
     return new Decoder((json: unknown) =>
       [ad, bd, ...ds].reduce(
@@ -579,35 +624,46 @@ export class Decoder<A> {
    * ```
    */
   static valueAt = <A>(paths: (string | number)[], decoder: Decoder<A>): Decoder<A> =>
-    new Decoder<A>((json: unknown) => {
+    new Decoder<A>((json: unknown): DecodeResult<A> => {
       let jsonAtPath: any = json;
       for (let i: number = 0; i < paths.length; i++) {
         if (jsonAtPath === undefined) {
           return Result.err({
-            at: printPath(paths.slice(0, i + 1)),
-            message: 'path does not exist'
+            at: paths.slice(0, i + 1),
+            message: 'path does not exist',
+            invalidValue: undefined,
+            expectation: 'existing path'
           });
         } else if (typeof paths[i] === 'string' && !isJsonObject(jsonAtPath)) {
           return Result.err({
-            at: printPath(paths.slice(0, i + 1)),
-            message: expectedGot('an object', jsonAtPath)
+            at: paths.slice(0, i + 1),
+            message: expectedGot('an object', jsonAtPath),
+            invalidValue: json,
+            expectation: 'an object'
           });
         } else if (typeof paths[i] === 'number' && !isJsonArray(jsonAtPath)) {
           return Result.err({
-            at: printPath(paths.slice(0, i + 1)),
-            message: expectedGot('an array', jsonAtPath)
+            at: paths.slice(0, i + 1),
+            message: expectedGot('an array', jsonAtPath),
+            invalidValue: json,
+            expectation: 'an array'
           });
         } else {
           jsonAtPath = jsonAtPath[paths[i]];
         }
       }
-      return Result.mapError(
-        error =>
-          jsonAtPath === undefined
-            ? {at: printPath(paths), message: 'path does not exist'}
-            : prependAt(printPath(paths), error),
-        decoder.decode(jsonAtPath)
-      );
+
+      const r: DecodeResult<A> = decoder.decode(jsonAtPath);
+      if (jsonAtPath === undefined) {
+        return Result.err({
+          at: paths,
+          message: 'path does not exist',
+          expectation: 'existing path',
+          invalidValue: undefined
+        });
+      }
+
+      return prependAtIfError(r, ...paths);
     });
 
   /**
@@ -619,8 +675,10 @@ export class Decoder<A> {
   /**
    * Decoder that ignores the input json and always fails with `errorMessage`.
    */
-  static fail = <A>(errorMessage: string): Decoder<A> =>
-    new Decoder<A>((json: unknown) => Result.err({message: errorMessage}));
+  static fail = <A>(errorMessage: string, expectation: string = '<????>'): Decoder<A> =>
+    new Decoder<A>((json: unknown) =>
+      Result.err({at: [], message: errorMessage, expectation, invalidValue: json})
+    );
 
   /**
    * Decoder that allows for validating recursive data structures. Unlike with
@@ -668,16 +726,21 @@ export class Decoder<A> {
    * // }
    * ```
    */
-  run = (json: unknown): RunResult<A> =>
-    Result.mapError(
-      error => ({
-        kind: 'DecoderError' as 'DecoderError',
-        input: json,
-        at: 'input' + (error.at || ''),
-        message: error.message || ''
-      }),
-      this.decode(json)
-    );
+  run = (json: unknown): RunResult<A> => {
+    const r = this.decode(json);
+    if (!r.ok) {
+      return {
+        ok: false,
+        error: {
+          ...r.error,
+          kind: 'DecoderError' as 'DecoderError',
+          input: json
+        }
+      };
+    } else {
+      return r;
+    }
+  };
 
   /**
    * Run the decoder as a `Promise`.
@@ -688,7 +751,8 @@ export class Decoder<A> {
    * Run the decoder and return the value on success, or throw an exception
    * with a formatted error string.
    */
-  runWithException = (json: unknown, additionalMessage?: string, additionalData?: any): A => Result.withException(this.run(json), additionalMessage, additionalData);
+  runWithException = (json: unknown, additionalMessage?: string, additionalData?: any): A =>
+    Result.withException(this.run(json), additionalMessage, additionalData);
 
   /**
    * Construct a new decoder that applies a transformation to the decoded

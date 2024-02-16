@@ -109,7 +109,7 @@ describe('decode phone number objects', () => {
     expect(error).toMatchObject({
       ok: false,
       error: {
-        at: 'input[1]',
+        at: [1],
         message: [
           'expected a value matching one of the decoders, got the errors ',
           `["at error: the key 'international' is required but was not present", `,

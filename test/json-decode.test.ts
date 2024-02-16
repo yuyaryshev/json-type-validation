@@ -33,21 +33,21 @@ describe('string', () => {
   it('fails when given a number', () => {
     expect(decoder.run(1)).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected a string, got a number'}
+      error: {at: [], message: 'type mismatch'}
     });
   });
 
   it('fails when given null', () => {
     expect(decoder.run(null)).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected a string, got null'}
+      error: {at: [], message: 'type mismatch', expectation: 'a string'}
     });
   });
 
   it('fails when given a boolean', () => {
     expect(decoder.run(true)).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected a string, got a boolean'}
+      error: {at: [], message: 'type mismatch'}
     });
   });
 });
@@ -62,14 +62,14 @@ describe('number', () => {
   it('fails when given a string', () => {
     expect(decoder.run('hey')).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected a number, got a string'}
+      error: {at: [], message: 'type mismatch'}
     });
   });
 
   it('fails when given boolean', () => {
     expect(decoder.run(true)).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected a number, got a boolean'}
+      error: {at: [], message: 'type mismatch'}
     });
   });
 });
@@ -84,14 +84,14 @@ describe('boolean', () => {
   it('fails when given a string', () => {
     expect(decoder.run('hey')).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected a boolean, got a string'}
+      error: {at: [], message: 'type mismatch'}
     });
   });
 
   it('fails when given a number', () => {
     expect(decoder.run(1)).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected a boolean, got a number'}
+      error: {at: [], message: 'type mismatch'}
     });
   });
 });
@@ -123,7 +123,7 @@ describe('anyJson', () => {
 
     expect(userDecoder.run({name: 73, complexUserData: []})).toMatchObject({
       ok: false,
-      error: {at: 'input.name', message: 'expected a string, got a number'}
+      error: {at: ['name'], message: 'type mismatch'}
     });
   });
 });
@@ -148,7 +148,7 @@ describe('constant', () => {
 
     expect(decoder.run(true)).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected 42, got true'}
+      error: {at: [], message: 'type mismatch'}
     });
   });
 
@@ -185,7 +185,7 @@ describe('constant', () => {
     expect(decoder.run([1, 2, 3])).toEqual({ok: true, result: [1, 2, 3]});
     expect(decoder.run([1, 2, 3, 4])).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected [1,2,3], got [1,2,3,4]'}
+      error: {at: [], message: 'type mismatch', expectation: [1, 2, 3]}
     });
   });
 
@@ -195,7 +195,7 @@ describe('constant', () => {
     expect(decoder.run({a: true, b: 12})).toEqual({ok: true, result: {a: true, b: 12}});
     expect(decoder.run({a: true, b: 7})).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected {"a":true,"b":12}, got {"a":true,"b":7}'}
+      error: {at: [], message: 'type mismatch', expectation: 'TBD'}
     });
   });
 });
@@ -225,7 +225,7 @@ describe('object', () => {
 
       expect(decoder.run('true')).toMatchObject({
         ok: false,
-        error: {at: 'input', message: 'expected an object, got a string'}
+        error: {at: [], message: 'type mismatch', expectation: 'an object'}
       });
     });
 
@@ -234,7 +234,7 @@ describe('object', () => {
 
       expect(decoder.run([])).toMatchObject({
         ok: false,
-        error: {at: 'input', message: 'expected an object, got an array'}
+        error: {at: [], message: 'type mismatch', expectation: 'TBD'}
       });
     });
 
@@ -243,7 +243,7 @@ describe('object', () => {
 
       expect(decoder.run({})).toMatchObject({
         ok: false,
-        error: {at: 'input', message: "the key 'x' is required but was not present"}
+        error: {at: [], message: "the key 'x' is required but was not present"}
       });
     });
 
@@ -252,7 +252,7 @@ describe('object', () => {
 
       expect(decoder.run({name: 5})).toMatchObject({
         ok: false,
-        error: {at: 'input.name', message: 'expected a string, got a number'}
+        error: {at: 'input.name', message: 'type mismatch', expectation: 'TBD'}
       });
     });
 
@@ -268,7 +268,7 @@ describe('object', () => {
       const error = decoder.run({hello: {hey: {'Howdy!': {}}}});
       expect(error).toMatchObject({
         ok: false,
-        error: {at: 'input.hello.hey.Howdy!', message: 'expected a string, got an object'}
+        error: {at: 'input.hello.hey.Howdy!', message: 'type mismatch', expectation: 'TBD'}
       });
     });
   });
@@ -303,7 +303,7 @@ describe('array', () => {
   it('fails when given something other than a array', () => {
     expect(decoder.run('oops')).toMatchObject({
       ok: false,
-      error: {at: 'input', message: 'expected an array, got a string'}
+      error: {at: [], message: 'type mismatch', expectation: 'TBD'}
     });
   });
 
@@ -311,7 +311,7 @@ describe('array', () => {
     it('fails when the elements are of the wrong type', () => {
       expect(decoder.run(['dang'])).toMatchObject({
         ok: false,
-        error: {at: 'input[0]', message: 'expected a number, got a string'}
+        error: {at: 'input[0]', message: 'type mismatch', expectation: 'TBD'}
       });
     });
 
@@ -320,7 +320,7 @@ describe('array', () => {
 
       expect(nestedDecoder.run([[], [], [[1, 2, 3, false]]])).toMatchObject({
         ok: false,
-        error: {at: 'input[2][0][3]', message: 'expected a number, got a boolean'}
+        error: {at: 'input[2][0][3]', message: 'type mismatch', expectation: 'TBD'}
       });
     });
   });
@@ -339,7 +339,7 @@ describe('array', () => {
 
     expect(validNumbersDecoder.run(false)).toMatchObject({
       ok: false,
-      error: {message: 'expected an array, got a boolean'}
+      error: {at: 'TBD', message: 'type mismatch', expectation: 'TBD'}
     });
   });
 });
@@ -375,7 +375,7 @@ describe('tuple', () => {
 
       expect(decoder.run([1, 2])).toMatchObject({
         ok: false,
-        error: {at: 'input', message: 'expected a tuple of length 1, got one of length 2'}
+        error: {at: [], message: 'type mismatch', expectation: 'tuple 3'}
       });
     });
 
@@ -384,7 +384,7 @@ describe('tuple', () => {
 
       expect(decoder.run({x: 1})).toMatchObject({
         ok: false,
-        error: {at: 'input', message: 'expected a tuple of length 1, got an object'}
+        error: {at: [], message: 'expected a tuple of length 1, got an object'}
       });
     });
 
@@ -437,14 +437,14 @@ describe('dict', () => {
     it('fails if given an array', () => {
       expect(decoder.run([])).toMatchObject({
         ok: false,
-        error: {at: 'input', message: 'expected an object, got an array'}
+        error: {at: [], message: 'expected an object, got an array'}
       });
     });
 
     it('fails if given a primitive', () => {
       expect(decoder.run(5)).toMatchObject({
         ok: false,
-        error: {at: 'input', message: 'expected an object, got a number'}
+        error: {at: [], message: 'expected an object, got a number'}
       });
     });
   });
@@ -476,7 +476,7 @@ describe('optional', () => {
     it('fails when the value is invalid', () => {
       expect(decoder.run(false)).toMatchObject({
         ok: false,
-        error: {at: 'input', message: 'expected a number, got a boolean'}
+        error: {at: [], message: 'expected a number, got a boolean'}
       });
     });
   });
@@ -519,7 +519,12 @@ describe('oneOf', () => {
     });
 
     it('can decode a value with multiple alternatives', () => {
-      const decoder = array(oneOf(string().map(s => s.length), number()));
+      const decoder = array(
+        oneOf(
+          string().map(s => s.length),
+          number()
+        )
+      );
 
       expect(decoder.run(['hey', 10])).toEqual({ok: true, result: [3, 10]});
     });
@@ -531,7 +536,7 @@ describe('oneOf', () => {
     expect(decoder.run([])).toMatchObject({
       ok: false,
       error: {
-        at: 'input',
+        at: [],
         message:
           'expected a value matching one of the decoders, got the errors ' +
           '["at error: expected a string, got an array", "at error: expected a number, got an array"]'
@@ -591,7 +596,7 @@ describe('union', () => {
     expect(error).toMatchObject({
       ok: false,
       error: {
-        at: 'input',
+        at: [],
         message:
           'expected a value matching one of the decoders, got the errors ' +
           '["at error.kind: expected "a", got "b"", "at error.value: expected a boolean, got a number"]'
@@ -769,9 +774,9 @@ describe('fail', () => {
   it('always fails and returns the same error message', () => {
     expect(decoder.run('pancakes')).toMatchObject({
       ok: false,
-      error: {at: 'input', message: wisdom}
+      error: {at: [], message: wisdom}
     });
-    expect(decoder.run(5)).toMatchObject({ok: false, error: {at: 'input', message: wisdom}});
+    expect(decoder.run(5)).toMatchObject({ok: false, error: {at: [], message: wisdom}});
   });
 });
 
@@ -786,7 +791,7 @@ describe('lazy', () => {
     it('does not alter the error message', () => {
       expect(decoder.run(5)).toMatchObject({
         ok: false,
-        error: {at: 'input', message: 'expected a string, got a number'}
+        error: {at: [], message: 'expected a string, got a number'}
       });
     });
   });
@@ -833,7 +838,7 @@ describe('runPromise', () => {
     return expect(promise(42)).rejects.toEqual({
       kind: 'DecoderError',
       input: 42,
-      at: 'input',
+      at: [],
       message: 'expected a boolean, got a number'
     });
   });
@@ -862,7 +867,7 @@ describe('runWithException', () => {
     expect(thrownError).toEqual({
       kind: 'DecoderError',
       input: 42,
-      at: 'input',
+      at: [],
       message: 'expected a boolean, got a number'
     });
   });
@@ -905,7 +910,7 @@ describe('andThen', () => {
     it('can decode using both the first and second decoder', () => {
       expect(decoder.run({version: 5, x: 'bootsncats'})).toMatchObject({
         ok: false,
-        error: {at: 'input', message: 'Unable to decode info, version 5 is not supported.'}
+        error: {at: [], message: 'Unable to decode info, version 5 is not supported.'}
       });
 
       expect(decoder.run({version: 3, a: true})).toEqual({ok: true, result: {a: true}});
@@ -932,11 +937,10 @@ describe('andThen', () => {
     const createNonEmptyArray = <T>(arr: T[]): NonEmptyArray<T> => arr as NonEmptyArray<T>;
 
     const nonEmptyArrayDecoder = <T>(values: Decoder<T>): Decoder<NonEmptyArray<T>> =>
-      array(values).andThen(
-        arr =>
-          arr.length > 0
-            ? succeed(createNonEmptyArray(arr))
-            : fail(`expected a non-empty array, got an empty array`)
+      array(values).andThen(arr =>
+        arr.length > 0
+          ? succeed(createNonEmptyArray(arr))
+          : fail(`expected a non-empty array, got an empty array`)
       );
 
     expect(nonEmptyArrayDecoder(number()).run([1, 2, 3])).toEqual({
