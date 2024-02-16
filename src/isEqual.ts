@@ -1,4 +1,6 @@
-function checkEquality<T>(a:T, b:T, refs:any[]): boolean {
+function checkEquality<T>(a0:T, b0:T, refs:any[]): boolean {
+    let a:any = a0;
+    let b:any = b0;
     let aElements,
       bElements,
       element,
@@ -7,6 +9,9 @@ function checkEquality<T>(a:T, b:T, refs:any[]): boolean {
 
     // trivial case: primitives and referentially equal objects
     if (a === b) return true;
+
+    // trivial case: empty arrays
+    if (Array.isArray(a) && Array.isArray(b) && !a.length && !b.length) return true;
 
     // if both are null/undefined, the above check would have returned true
     if (a == null || b == null) return false;

@@ -85,11 +85,19 @@ export const withDefault = <V>(defaultValue: V, r: Result<V, any>): V =>
 /**
  * Return the successful result, or throw an error.
  */
-export const withException = <V>(r: Result<V, any>): V => {
+export const withException = <V>(r: Result<V, any>, additionalMessage?: string, additionalData?: any): V => {
   if (r.ok === true) {
     return r.result;
   } else {
-    throw Object.assign(new Error(r.error.message), r.error);
+    const {message, ...others} = r.error
+    const err = Object.assign(new Error(r.error.message +(additionalMessage||"")+" at "+r.error.at), others, {messageWoAt:r.error.message});
+    if(additionalMessage) {
+      err.additionalMessage = additionalMessage;
+    }
+    if(additionalData) {
+      err.additionalData = additionalData;
+    }
+    throw err;
   }
 };
 

@@ -1,6 +1,6 @@
 {
   "name": "yuyaryshev-json-type-validation",
-  "version": "3.1.5",
+  "version": "3.1.8",
   "description": "runtime type checking and validation of untyped JSON data",
   "keywords": [
     "TypeScript",
@@ -28,8 +28,9 @@
   "scripts": {
     "lint": "tslint -t codeFrame --project tsconfig-test.json",
     "prebuild": "rimraf dist",
-    "build": "tsc --module commonjs --outDir dist/lib && rollup -c rollup.config.cjs",
-    "start": "rollup -c rollup.config.ts -w",
+    "build_only": "tsc --module commonjs --outDir dist/lib && rollup -c rollup.config.cjs",
+    "build": "npm run prebuild && npm run build_only",
+    "start": "rollup -c rollup.config.cjs -w",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:prod": "npm run lint && npm run test -- --coverage --no-cache",
@@ -67,8 +68,12 @@
     "prettier": "^3.0.0",
     "rimraf": "^5.0.1",
     "rollup": "^3.26.2",
+    "rollup-plugin-alias": "^2.2.0",
     "rollup-plugin-dts": "^5.3.0",
     "rollup-plugin-esbuild": "^5.0.0",
+    "rollup-plugin-node-resolve": "^5.2.0",
+    "rollup-plugin-sourcemaps": "^0.6.3",
+    "rollup-plugin-typescript2": "^0.35.0",
     "typescript": "^5.1.6"
   }
 }

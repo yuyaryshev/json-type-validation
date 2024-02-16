@@ -688,7 +688,7 @@ export class Decoder<A> {
    * Run the decoder and return the value on success, or throw an exception
    * with a formatted error string.
    */
-  runWithException = (json: unknown): A => Result.withException(this.run(json));
+  runWithException = (json: unknown, additionalMessage?: string, additionalData?: any): A => Result.withException(this.run(json), additionalMessage, additionalData);
 
   /**
    * Construct a new decoder that applies a transformation to the decoded
