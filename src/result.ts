@@ -82,20 +82,97 @@ export const asPromise = <V>(r: Result<V, any>): Promise<V> =>
 export const withDefault = <V>(defaultValue: V, r: Result<V, any>): V =>
   r.ok === true ? r.result : defaultValue;
 
+export interface WithExceptionOpts {
+  errorMessageWithData?: boolean;
+  additionalMessage?: string;
+  additionalData?: any;
+}
+
+function cloneData(data: any) {
+  return JSON.parse(JSON.stringify(data));
+}
+
+function tryStringify(v: any, maxLength?: number): string {
+  if (maxLength !== undefined) {
+    const v0 = tryStringify(v);
+    if (v0.length > maxLength) {
+      return v0.slice(0, maxLength - 3) + '...';
+    }
+  }
+
+  try {
+    switch (typeof v) {
+      case 'undefined':
+      case 'number':
+      case 'string':
+      case 'boolean':
+      case 'bigint':
+        return '' + v;
+
+      case 'symbol':
+      case 'function':
+        return `[${typeof v} ${v.name || '<unnamed>'}]`;
+
+      case 'object':
+        return JSON.stringify(v);
+    }
+  } catch (e: any) {
+    return 'tryStringify FAILED!';
+  }
+}
+
+export function explainErrorInData(err: any) {
+  const data: any = err.input;
+  const errorPath: string = err.at;
+  const pathParts: string[] = errorPath.split(']').join('').split('[').join('.').split('.');
+  if (pathParts[0] === 'input') {
+    pathParts.shift();
+  }
+  const lastPart = pathParts.pop();
+
+  const errorExplanedIndata = cloneData(data);
+  let p: any = errorExplanedIndata;
+  for (let part of pathParts) {
+    if (typeof p === 'object') {
+      p = p[part];
+    }
+  }
+
+  p[lastPart!] = `${tryStringify(p[lastPart!], 50)} <<<ERROR HERE: ${err.message}`;
+
+  err.errorExplanedIndata = errorExplanedIndata;
+  err.message = `${err.message}\nError in data:\n${JSON.stringify(
+    errorExplanedIndata,
+    undefined,
+    4
+  )}`;
+}
+
 /**
  * Return the successful result, or throw an error.
  */
-export const withException = <V>(r: Result<V, any>, additionalMessage?: string, additionalData?: any): V => {
+export const withException = <V>(r: Result<V, any>, opts?: WithExceptionOpts): V => {
   if (r.ok === true) {
     return r.result;
   } else {
-    const {message, ...others} = r.error
-    const err = Object.assign(new Error(r.error.message +(additionalMessage||"")+" at "+r.error.at), others, {messageWoAt:r.error.message});
-    if(additionalMessage) {
-      err.additionalMessage = additionalMessage;
+    const {message, ...others} = r.error;
+
+    const err = Object.assign(
+      new Error(r.error.message + (opts?.additionalMessage || '') + ' at ' + r.error.at),
+      others,
+      {messageWoAt: r.error.message}
+    );
+    err.at = r.error.at;
+    err.data = {};
+    if (opts?.additionalMessage) {
+      err.additionalMessage = opts?.additionalMessage;
     }
-    if(additionalData) {
-      err.additionalData = additionalData;
+    if (opts?.additionalData) {
+      err.additionalData = opts?.additionalData;
+    }
+
+    if (opts?.errorMessageWithData) {
+      explainErrorInData(err);
     }
     throw err;
   }
@@ -117,10 +194,11 @@ export const map = <A, B, E>(f: (value: A) => B, r: Result<A, E>): Result<B, E> 
  * Apply `f` to the result of two `Ok`s, or pass an error through. If both
  * `Result`s are errors then the first one is returned.
  */
-export const map2 = <A, B, C, E>(f: (av: A, bv: B) => C, ar: Result<A, E>, br: Result<B, E>): Result<C, E> =>
-  ar.ok === false ? ar :
-    br.ok === false ? br :
-      ok<C>(f(ar.result, br.result));
+export const map2 = <A, B, C, E>(
+  f: (av: A, bv: B) => C,
+  ar: Result<A, E>,
+  br: Result<B, E>
+): Result<C, E> => (ar.ok === false ? ar : br.ok === false ? br : ok<C>(f(ar.result, br.result)));
 
 /**
  * Apply `f` to the error of an `Err`, or pass the success through.
